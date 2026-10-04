@@ -1,0 +1,13 @@
+# Virtual environment
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Model file (downloaded by scripts/download_model.py)
+models/*.task
+
+# Generated outputs
+outputs/*
+!outputs/.gitkeep

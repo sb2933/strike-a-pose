@@ -1,0 +1,6 @@
+# Pinned versions tested with Python 3.11 on Windows.
+mediapipe==1.0.1
+opencv-contrib-python==5.0.0.93   # mediapipe depends on this build; don't also install opencv-python
+numpy==2.4.6
+matplotlib==3.11.2
+pytest==9.1.1

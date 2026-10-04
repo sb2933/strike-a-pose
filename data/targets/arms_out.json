@@ -1,0 +1,74 @@
+{
+  "name": "arms_out",
+  "source_image": null,
+  "synthetic": true,
+  "image_width": 1000,
+  "image_height": 1400,
+  "landmarks": {
+    "nose": {
+      "x": 0.5,
+      "y": 0.235714,
+      "visibility": 1.0
+    },
+    "left_shoulder": {
+      "x": 0.58,
+      "y": 0.3,
+      "visibility": 1.0
+    },
+    "right_shoulder": {
+      "x": 0.42,
+      "y": 0.3,
+      "visibility": 1.0
+    },
+    "left_elbow": {
+      "x": 0.7,
+      "y": 0.3,
+      "visibility": 1.0
+    },
+    "right_elbow": {
+      "x": 0.3,
+      "y": 0.3,
+      "visibility": 1.0
+    },
+    "left_wrist": {
+      "x": 0.82,
+      "y": 0.3,
+      "visibility": 1.0
+    },
+    "right_wrist": {
+      "x": 0.18,
+      "y": 0.3,
+      "visibility": 1.0
+    },
+    "left_hip": {
+      "x": 0.56,
+      "y": 0.478571,
+      "visibility": 1.0
+    },
+    "right_hip": {
+      "x": 0.44,
+      "y": 0.478571,
+      "visibility": 1.0
+    },
+    "left_knee": {
+      "x": 0.56,
+      "y": 0.621429,
+      "visibility": 1.0
+    },
+    "right_knee": {
+      "x": 0.44,
+      "y": 0.621429,
+      "visibility": 1.0
+    },
+    "left_ankle": {
+      "x": 0.56,
+      "y": 0.764286,
+      "visibility": 1.0
+    },
+    "right_ankle": {
+      "x": 0.44,
+      "y": 0.764286,
+      "visibility": 1.0
+    }
+  }
+}
