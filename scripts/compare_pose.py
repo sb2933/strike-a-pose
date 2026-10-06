@@ -13,23 +13,13 @@ from pathlib import Path
 from dance_challenge.angles import format_angle_report
 from dance_challenge.config import MIRROR_INPUT, OUTPUTS_DIR
 from dance_challenge.feedback import pose_feedback
-from dance_challenge.landmarks import Pose, landmarks_to_pose, load_pose, save_pose
-from dance_challenge.pose_detector import detect_pose_in_file
+from dance_challenge.landmarks import load_pose, save_pose
+from dance_challenge.logs import set_verbose
+from dance_challenge.photo import pose_from_photo, save_detection_overlay, save_saved_pose_overlay
+from dance_challenge.quality import check_pose_quality
 from dance_challenge.scoring import score_pose
 from dance_challenge.targets import list_targets, load_target
 from dance_challenge.visualize import plot_comparison
-
-
-def user_pose_from_photo(path: Path, mirror: bool) -> Pose | None:
-    """Detect the pose in a photo and save it as JSON in outputs/ (None if no person)."""
-    image, landmarks = detect_pose_in_file(path, mirror=mirror)
-    if landmarks is None:
-        return None
-    h, w = image.shape[:2]
-    pose = landmarks_to_pose(landmarks, name=path.stem, source_image=path,
-                             image_width=w, image_height=h)
-    save_pose(pose, OUTPUTS_DIR / f"{path.stem}.json")
-    return pose
 
 
 def main() -> int:
@@ -45,7 +35,10 @@ def main() -> int:
     parser.add_argument("--mirror", action="store_true", default=MIRROR_INPUT,
                         help="Flip the user photo horizontally before detection")
     parser.add_argument("--list", action="store_true", help="List available targets and exit")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Show MediaPipe/TensorFlow log messages")
     args = parser.parse_args()
+    set_verbose(args.verbose)
 
     if args.list:
         print("Targets:", ", ".join(list_targets()) or "(none)")
@@ -58,21 +51,42 @@ def main() -> int:
         if args.user_json:
             user = load_pose(args.user_json)
             user_label = args.user_json.stem
+            warnings = check_pose_quality(user)
+            user_overlay = save_saved_pose_overlay(user, OUTPUTS_DIR / f"{user_label}_user_overlay.png")
         else:
-            user = user_pose_from_photo(args.user, args.mirror)
             user_label = args.user.stem
-            if user is None:
+            photo = pose_from_photo(args.user, name=user_label, mirror=args.mirror)
+            if photo.pose is None:
                 print(f"No person detected in {args.user}. Try a clearer, full-body photo.")
                 return 2
+            user, warnings = photo.pose, photo.warnings
+            save_pose(user, OUTPUTS_DIR / f"{user_label}.json")
+            user_overlay = save_detection_overlay(photo, OUTPUTS_DIR / f"{user_label}_user_overlay.png")
     except (FileNotFoundError, ValueError) as err:
         print(f"Error: {err}")
         return 1
 
-    result = score_pose(target, user)
+    target_overlay = save_saved_pose_overlay(target, OUTPUTS_DIR / f"{args.target}_target_overlay.png")
+    target_warnings = check_pose_quality(target)
+
     print(f"\nTarget: {args.target}    You: {user_label}\n")
+    for warning in warnings:
+        print(f"Warning: {warning}")
+    for warning in target_warnings:
+        print(f"Warning (target photo): {warning}")
+    if warnings or target_warnings:
+        print()
+
+    def print_overlays() -> None:
+        print("Overlays (check the right person was detected):")
+        print(f"  target: {target_overlay or '(synthetic target, no photo)'}")
+        print(f"  you:    {user_overlay or '(no photo for this pose)'}")
+
+    result = score_pose(target, user)
     if not result.visible:
         print(result.message)
         print("Skipped joints:", ", ".join(result.skipped_joints))
+        print_overlays()
         return 3
 
     print("Joint angles")
@@ -93,6 +107,7 @@ def main() -> int:
     fig_path = plot_comparison(result, args.target, user_label,
                                OUTPUTS_DIR / f"compare_{args.target}_vs_{user_label}.png")
     print(f"\nSaved figure: {fig_path}")
+    print_overlays()
     return 0
 
 

@@ -11,3 +11,9 @@ models/*.task
 # Generated outputs
 outputs/*
 !outputs/.gitkeep
+
+# Personal photos stay local
+data/raw/*
+data/user/*
+!data/raw/.gitkeep
+!data/user/.gitkeep

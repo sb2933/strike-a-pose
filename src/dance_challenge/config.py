@@ -31,6 +31,15 @@ MODEL_PATH: Path = MODELS_DIR / "pose_landmarker_full.task"
 # and you want "left" to mean the side that *looks* left on screen.
 MIRROR_INPUT: bool = False
 
+# The detector looks for up to this many people, then uses the largest one.
+# Looking for more than one means a person in the background (or on a TV)
+# can't silently be picked instead of you, and you get a warning.
+MAX_PEOPLE: int = 3
+
+# Photo-quality warnings (they don't change the score).
+MIN_AVG_VISIBILITY: float = 0.7  # warn if the 13 joints' average visibility is lower
+EDGE_MARGIN: float = 0.02        # warn if a joint is this close to the edge (fraction of image)
+
 # --- Joints ----------------------------------------------------------------
 
 # The 13 joints we keep, mapped to their MediaPipe landmark index.
@@ -121,8 +130,13 @@ BODY_PARTS: dict[str, dict[str, list[str]]] = {
 MIN_VISIBILITY: float = 0.5        # joints below this are skipped
 MIN_VISIBLE_JOINTS: int = 8        # fewer than this -> "pose not fully visible"
 
-ANGLE_ZERO_SCORE_DEG: float = 45.0     # angle error at which the score hits 0
-POSITION_ZERO_SCORE_DIST: float = 0.5  # distance (torso lengths) at which score hits 0
+# Each per-angle / per-joint score is 100 up to a tolerance (small errors are
+# free), then falls in a straight line to 0 at the "zero score" value.
+# Tuned with scripts/calibrate.py — see README "Design decisions".
+ANGLE_TOLERANCE_DEG: float = 10.0      # angle error that still scores 100
+ANGLE_ZERO_SCORE_DEG: float = 60.0     # angle error at which the score hits 0
+POSITION_TOLERANCE_DIST: float = 0.1   # distance (torso lengths) that still scores 100
+POSITION_ZERO_SCORE_DIST: float = 0.4  # distance (torso lengths) at which score hits 0
 
 ANGLE_WEIGHT: float = 0.6
 POSITION_WEIGHT: float = 0.4
@@ -135,3 +149,5 @@ OKAY_SCORE: float = 50.0   # >= this -> ⚠ / yellow, otherwise ✗ / red
 # Differences smaller than these are not worth a direction hint.
 DIRECTION_MIN_Y_DIFF: float = 0.15     # torso lengths
 DIRECTION_MIN_ANGLE_DIFF: float = 10.0  # degrees
+TURN_RATIO_TOLERANCE: float = 0.2       # shoulder-width change that counts as "turned"
+MAX_HINTS: int = 2                      # at most this many hints per body part

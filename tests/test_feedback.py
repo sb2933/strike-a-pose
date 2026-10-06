@@ -55,3 +55,46 @@ def test_bent_elbow_told_to_straighten(arms_out):
 def test_identical_pose_all_good(arms_out):
     lines = [fb.text() for fb in pose_feedback(score_pose(arms_out, arms_out))]
     assert lines == ["Left arm: ✓", "Right arm: ✓", "Left leg: ✓", "Right leg: ✓", "Torso: ✓"]
+
+
+def _all_test_pairs(synthetic, left_arm_lowered, left_arm_raised):
+    poses = {**synthetic, "lowered": left_arm_lowered, "raised": left_arm_raised}
+    return [(t, u) for t in poses.values() for u in poses.values()]
+
+
+def test_every_warning_line_has_a_direction(synthetic, left_arm_lowered, left_arm_raised):
+    for target, user in _all_test_pairs(synthetic, left_arm_lowered, left_arm_raised):
+        for fb in pose_feedback(score_pose(target, user)):
+            if fb.symbol != GOOD:
+                assert fb.hints, fb.text()
+
+
+def test_fallback_hint_when_no_specific_hint_applies(arms_out):
+    # Stretch the left wrist further out along the same line: no angle changes and
+    # no height change, so only the wrist *position* is off (by 0.35 torso lengths).
+    x, y = pixels_of(arms_out)["left_wrist"]
+    stretched = move_joints(arms_out, {"left_wrist": (x + 87.5, y)})
+    fb = by_part(pose_feedback(score_pose(arms_out, stretched)))["left_arm"]
+    assert fb.symbol == "⚠"
+    # The person's left wrist is on the image's right, so "in" = toward the photo's left.
+    assert fb.hints == ["move the left wrist toward the photo's left"]
+
+
+def test_lean_hint(arms_out):
+    upper = ["nose", "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+             "left_wrist", "right_wrist"]
+    pts = pixels_of(arms_out)
+    leaning = move_joints(arms_out, {j: (pts[j][0] + 60, pts[j][1]) for j in upper})
+    fb = by_part(pose_feedback(score_pose(arms_out, leaning)))["torso"]
+    assert fb.symbol != GOOD
+    assert "lean your upper body toward the photo's left" in fb.hints
+
+
+def test_foot_spread_hint(arms_out):
+    # Feet much wider than the target, legs still straight-ish.
+    pts = pixels_of(arms_out)
+    wide = move_joints(arms_out, {"left_knee": (pts["left_knee"][0] + 60, pts["left_knee"][1]),
+                                  "left_ankle": (pts["left_ankle"][0] + 120, pts["left_ankle"][1])})
+    fb = by_part(pose_feedback(score_pose(arms_out, wide)))["left_leg"]
+    assert fb.symbol != GOOD
+    assert "bring the foot in" in fb.hints

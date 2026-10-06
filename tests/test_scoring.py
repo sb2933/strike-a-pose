@@ -4,6 +4,8 @@ import pytest
 
 from dance_challenge.scoring import linear_score, score_pose
 
+from conftest import move_joints, pixels_of
+
 
 def set_visibility(pose, joints, value):
     pose = copy.deepcopy(pose)
@@ -17,6 +19,21 @@ def test_linear_score():
     assert linear_score(22.5, 45) == pytest.approx(50)
     assert linear_score(45, 45) == 0
     assert linear_score(90, 45) == 0
+
+
+def test_linear_score_with_tolerance():
+    assert linear_score(0, 60, tolerance=10) == 100
+    assert linear_score(10, 60, tolerance=10) == 100     # at the tolerance: still free
+    assert linear_score(35, 60, tolerance=10) == pytest.approx(50)  # halfway from 10 to 60
+    assert linear_score(60, 60, tolerance=10) == 0
+
+
+def test_small_errors_are_not_penalised(arms_out):
+    # Drop the left wrist a little: elbow bends ~6° and the wrist moves ~0.05
+    # torso lengths, both inside the tolerances, so the score stays 100.
+    x, y = pixels_of(arms_out)["left_wrist"]
+    nudged = move_joints(arms_out, {"left_wrist": (x, y + 12)})
+    assert score_pose(arms_out, nudged).overall == 100
 
 
 def test_identical_poses_score_100(synthetic):

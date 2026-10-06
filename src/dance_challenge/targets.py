@@ -10,9 +10,9 @@ skeleton, so the project works before you have any photos.
 import copy
 from pathlib import Path
 
-from dance_challenge.config import TARGETS_DIR
-from dance_challenge.landmarks import Pose, landmarks_to_pose, load_pose, save_pose
-from dance_challenge.pose_detector import detect_pose_in_file
+from dance_challenge.config import MIRROR_INPUT, TARGETS_DIR
+from dance_challenge.landmarks import Pose, load_pose, save_pose
+from dance_challenge.photo import PhotoPose, pose_from_photo
 
 # --- Real targets from photos ------------------------------------------------
 
@@ -23,20 +23,23 @@ def target_path(name: str, targets_dir: Path = TARGETS_DIR) -> Path:
 
 
 def create_target_from_image(
-    image_path: str | Path, name: str, targets_dir: Path = TARGETS_DIR
-) -> Path:
+    image_path: str | Path,
+    name: str,
+    targets_dir: Path = TARGETS_DIR,
+    mirror: bool = MIRROR_INPUT,
+) -> tuple[Path, PhotoPose]:
     """Detect the pose in a photo and save it as ``data/targets/<name>.json``.
+
+    Returns:
+        ``(json_path, photo)`` — ``photo`` holds the detection and any warnings.
 
     Raises:
         ValueError: If no person is detected in the photo.
     """
-    image, landmarks = detect_pose_in_file(image_path)
-    if landmarks is None:
+    photo = pose_from_photo(image_path, name=name, mirror=mirror)
+    if photo.pose is None:
         raise ValueError(f"No person detected in {image_path}")
-    h, w = image.shape[:2]
-    pose = landmarks_to_pose(landmarks, name=name, source_image=image_path,
-                             image_width=w, image_height=h)
-    return save_pose(pose, target_path(name, targets_dir))
+    return save_pose(photo.pose, target_path(name, targets_dir)), photo
 
 
 def list_targets(targets_dir: Path = TARGETS_DIR) -> list[str]:

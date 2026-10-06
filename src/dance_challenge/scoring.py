@@ -1,8 +1,9 @@
 """Step 1.7 — Turn angle and position differences into scores out of 100.
 
-- Per-angle score: 100 at 0° off, falling linearly to 0 at ANGLE_ZERO_SCORE_DEG.
-- Per-joint position score: 100 at distance 0, falling linearly to 0 at
-  POSITION_ZERO_SCORE_DIST torso lengths.
+- Per-angle score: 100 up to ANGLE_TOLERANCE_DEG off, then falling linearly
+  to 0 at ANGLE_ZERO_SCORE_DEG.
+- Per-joint position score: 100 up to POSITION_TOLERANCE_DIST, then falling
+  linearly to 0 at POSITION_ZERO_SCORE_DIST torso lengths.
 - Overall = ANGLE_WEIGHT * mean(angle scores) + POSITION_WEIGHT * mean(position scores).
 
 Joints that aren't visible enough (in either pose) are skipped, along with any
@@ -13,6 +14,7 @@ from dataclasses import dataclass, field
 
 from dance_challenge.angles import AngleComparison, compare_angles
 from dance_challenge.config import (
+    ANGLE_TOLERANCE_DEG,
     ANGLE_WEIGHT,
     ANGLE_ZERO_SCORE_DEG,
     ANGLES,
@@ -20,6 +22,7 @@ from dance_challenge.config import (
     LOWER_BODY_JOINTS,
     MIN_VISIBILITY,
     MIN_VISIBLE_JOINTS,
+    POSITION_TOLERANCE_DIST,
     POSITION_WEIGHT,
     POSITION_ZERO_SCORE_DIST,
     UPPER_BODY_JOINTS,
@@ -54,9 +57,11 @@ class ScoreResult:
     user_norm: dict = field(default_factory=dict, repr=False)
 
 
-def linear_score(error: float, zero_at: float) -> float:
-    """100 when error is 0, falling in a straight line to 0 at ``zero_at``."""
-    return max(0.0, 100.0 * (1.0 - error / zero_at))
+def linear_score(error: float, zero_at: float, tolerance: float = 0.0) -> float:
+    """100 while ``error <= tolerance``, then a straight line down to 0 at ``zero_at``."""
+    if error <= tolerance:
+        return 100.0
+    return max(0.0, 100.0 * (1.0 - (error - tolerance) / (zero_at - tolerance)))
 
 
 def _mean(values: list[float]) -> float | None:
@@ -113,7 +118,8 @@ def score_pose(target: Pose, user: Pose) -> ScoreResult:
             skipped_angles.append(name)
             continue
         result.angles[name] = all_angles[name]
-        result.angle_scores[name] = linear_score(all_angles[name]["difference"], ANGLE_ZERO_SCORE_DEG)
+        result.angle_scores[name] = linear_score(
+            all_angles[name]["difference"], ANGLE_ZERO_SCORE_DEG, ANGLE_TOLERANCE_DEG)
     result.skipped_angles = skipped_angles
 
     # Positions.
@@ -123,7 +129,8 @@ def score_pose(target: Pose, user: Pose) -> ScoreResult:
             continue
         dist = float(((result.target_norm[joint] - result.user_norm[joint]) ** 2).sum() ** 0.5)
         result.distances[joint] = dist
-        result.position_scores[joint] = linear_score(dist, POSITION_ZERO_SCORE_DIST)
+        result.position_scores[joint] = linear_score(
+            dist, POSITION_ZERO_SCORE_DIST, POSITION_TOLERANCE_DIST)
 
     # Per-joint score (for colouring): position score mixed with the angle at that joint.
     angle_at = {ANGLES[name][1]: s for name, s in result.angle_scores.items()}

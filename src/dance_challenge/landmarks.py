@@ -37,10 +37,13 @@ def landmarks_to_pose(
     source_image: str | Path | None,
     image_width: int,
     image_height: int,
+    mirrored: bool = False,
 ) -> Pose:
     """Keep only our 13 joints from MediaPipe's 33 landmarks.
 
     Only x, y (normalized 0–1) and visibility are kept; z is ignored.
+    ``mirrored`` records whether the photo was flipped before detection, so the
+    skeleton can be drawn back onto the right version of the photo later.
     """
     joints = {
         joint: {
@@ -50,13 +53,16 @@ def landmarks_to_pose(
         }
         for joint, idx in JOINTS.items()
     }
-    return {
+    pose = {
         "name": name,
         "source_image": _relative_path(source_image),
         "image_width": int(image_width),
         "image_height": int(image_height),
         "landmarks": joints,
     }
+    if mirrored:
+        pose["mirrored"] = True
+    return pose
 
 
 def validate_pose(pose: Pose) -> None:

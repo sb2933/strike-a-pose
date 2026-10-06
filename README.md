@@ -29,7 +29,7 @@ py -3.11 -m venv .venv
 python -m pip install -r requirements.txt
 python -m pip install -e .          # makes `dance_challenge` importable
 python scripts/download_model.py    # fetches models/pose_landmarker_full.task (~9 MB)
-pytest                              # should print: 31 passed
+pytest                              # should print: 43 passed
 ```
 
 All commands below assume the virtual environment is active and you are in the
@@ -53,6 +53,8 @@ python scripts/create_target.py data/raw/star_jump.jpg --name star_jump   # -> d
 python scripts/create_target.py --synthetic                              # rebuild arms_out, reach_up, squat
 python scripts/create_target.py --list                                   # list available targets
 ```
+Creating a target from a photo also saves `outputs/<name>_target_overlay.png`.
+Open it to confirm the right person was detected.
 
 ### `scripts/compare_pose.py` — steps 1.4–1.9 end to end
 ```powershell
@@ -64,6 +66,25 @@ It prints every joint angle ("Left elbow: target 90°, you 105°, off by 15°"),
 the overall / upper-body / lower-body scores and per-body-part feedback, then
 saves `outputs/compare_<target>_vs_<you>.png`. When you use `--user`, your
 detected pose is also saved to `outputs/<photo name>.json`.
+
+It also saves two overlay images so you can check the right person was used:
+`outputs/<target>_target_overlay.png` and `outputs/<you>_user_overlay.png`.
+The chosen person is drawn in white/red; anyone else detected is drawn in grey.
+Warnings are printed if more than one person was found, if average joint
+visibility is low, or if a joint is at the image edge (possibly cut off).
+
+### `scripts/calibrate.py` — tuning the scoring
+```powershell
+python scripts/calibrate.py --target mypose                 # every photo in data/user/
+python scripts/calibrate.py --target mypose --folder some/other/folder
+```
+Prints one row per photo: overall, upper, lower, angle score, position score.
+Run it before and after changing a threshold in `config.py` to see the effect.
+
+### Common flags
+- `--verbose` (all scripts): show MediaPipe/TensorFlow's own INFO/warning
+  log lines, which are hidden by default. Use it when something goes wrong.
+- `--mirror` (detect/create/compare): flip the photo before detection.
 
 Example output (synthetic poses):
 
@@ -89,7 +110,10 @@ photo ─► pose_detector ─► landmarks (13 joints, JSON) ─┬─► angle
 | Module | Job |
 |---|---|
 | `config.py` | Joint list, bones, angle definitions, thresholds, weights, `MIRROR_INPUT` |
-| `pose_detector.py` | Load image, run MediaPipe `PoseLandmarker`, draw the raw skeleton |
+| `pose_detector.py` | Load image, run MediaPipe `PoseLandmarker` (up to 3 people), pick the largest, draw the skeleton |
+| `photo.py` | Photo → pose + warnings, and the overlay images the scripts save |
+| `quality.py` | Photo-quality warnings (low visibility, joints at the image edge) |
+| `logs.py` | Hide MediaPipe's native log lines unless `--verbose` |
 | `landmarks.py` | Keep 13 joints, save/load/validate the pose JSON format |
 | `targets.py` | Create targets from photos, list/load targets, build synthetic targets |
 | `angles.py` | 8 angles (elbows, shoulders, hips, knees) in degrees, target vs user |
@@ -116,8 +140,8 @@ photo ─► pose_detector ─► landmarks (13 joints, JSON) ─┬─► angle
 downward). Synthetic targets also have `"synthetic": true`.
 
 **Scoring** (all numbers live in `config.py`):
-- Per-angle score: 100 at 0° off → 0 at 45° or more (linear).
-- Per-joint position score: 100 at distance 0 → 0 at 0.5 torso lengths or more.
+- Per-angle score: 100 up to 10° off, then linear down to 0 at 60° or more.
+- Per-joint position score: 100 up to 0.1 torso lengths, then linear down to 0 at 0.4 or more.
 - Overall = 0.6 × mean angle score + 0.4 × mean position score, rounded to 0–100.
 - Joints with visibility < 0.5 in either pose are skipped, as is any angle using them.
   Fewer than 8 usable joints → "pose not fully visible" instead of a score.
@@ -137,7 +161,7 @@ downward). Synthetic targets also have `"synthetic": true`.
 ## Design decisions
 
 - **Python 3.11.** It was installed, is inside the 3.10–3.12 range, and MediaPipe 1.0.1 ships wheels for it.
-- **MediaPipe Tasks API (`PoseLandmarker`)**, "full" model, single-image mode, one person. The
+- **MediaPipe Tasks API (`PoseLandmarker`)**, "full" model, single-image mode. The
   legacy `mp.solutions.pose` doesn't exist in MediaPipe 1.x.
 - **`opencv-contrib-python` instead of `opencv-python`.** MediaPipe already depends on the contrib
   build; installing both puts two copies of `cv2` in the same place and they can break each other.
@@ -171,11 +195,57 @@ downward). Synthetic targets also have `"synthetic": true`.
 - **Status colours** (green `#0ca30c`, yellow `#fab219`, red `#d03b3b`) also use different
   marker shapes (●, ▲, ✕) so the figure can be read without relying on colour alone.
 
+### Changes after testing with real photos
+
+- **Scoring tolerances (calibrated).** Small errors are now free: angles score 100 up to
+  10° off, then fall linearly to 0 at 60° (was: 0° → 45°). Positions score 100 up to
+  0.1 torso lengths, then fall to 0 at 0.4 (was: 0 → 0.5). The 0.5 cutoff was
+  re-checked and *tightened* to 0.4: with a tolerance added, 0.5 let the "wrong" photos
+  creep up toward 40, and 0.4 keeps them lower while the close copy still scores high.
+  Calibration against target `mypose` (`scripts/calibrate.py`):
+
+  | photo | before | after |
+  |---|---|---|
+  | goodone.png (close copy) | 76 | 89 |
+  | good.jpg (hands + legs deliberately different) | 26 | 37 |
+  | wrong.jpg (wrong pose) | 24 | 30 |
+
+  Tuned on only three photos, so treat the numbers as a starting point and re-run
+  `calibrate.py` as you add more. No existing tests changed: the synthetic test poses
+  differ by 45–90°, far beyond the tolerances. New tests cover the tolerance itself.
+- **Up to 3 people, use the largest.** The detector looks for up to `MAX_PEOPLE = 3`
+  people and uses the one with the biggest bounding box (clipped to the image). If more
+  than one is found, a warning names which one (left/centre/right of the photo).
+  Biggest-body is a simple rule that matches "the person posing is closest to the camera".
+- **Photo-quality warnings** (don't change the score): average visibility of the 13 joints
+  below `MIN_AVG_VISIBILITY = 0.7`, or any joint within `EDGE_MARGIN = 2%` of the edge.
+- **Overlays for target and user** are saved on every `compare_pose.py` and
+  `create_target.py` run. A target's overlay is redrawn from its JSON onto its source
+  photo, so the JSON now records `"mirrored": true` when `--mirror` was used.
+- **No background removal.** Scoring only uses joint coordinates, so segmenting out a TV or
+  sofa wouldn't change any score; the real risk is the *wrong person* being picked, which
+  the multi-person check and overlays address.
+- **Every ⚠/✗ line has a direction.** New hints: shoulder ("lift the arm away from your
+  side" / "bring the arm closer to your side"), hip ("bend more at the hip" / "open up at
+  the hip"), foot spread ("step the foot wider" / "bring the foot in"), and torso lean
+  and turn. If none of them apply, the part falls back to its worst angle or worst joint,
+  e.g. "move the left wrist up and toward the photo's right". At most 2 hints per line.
+  Sideways directions say "the photo's left/right" rather than "your left/right" so they
+  can't be misread when the person faces away from the camera.
+- **MediaPipe log lines hidden.** They come from C++ code that writes straight to stderr,
+  so Python's `logging` can't silence them; `logs.py` points stderr at the null device
+  only while MediaPipe runs. `--verbose` turns this off. Python errors still show.
+- **Personal photos are gitignored** (`data/raw/*`, `data/user/*`) so they are never pushed.
+
 ## Known limitations
 
 - **2D only.** MediaPipe's depth (z) is ignored, so an arm pointing at the camera looks
   short, and a front-on photo can't tell a forward bend from a sideways one.
-- **Single person.** Only the most prominent person in the photo is used.
+- **Single person scored.** Only the largest person in the photo is scored. MediaPipe can
+  also *miss* small people in the background entirely (so no warning appears); the
+  overlay image is the reliable check.
+- **Crossed legs.** In poses like cross-legged sitting, knees and ankles overlap in 2D, so
+  leg angles and positions are less reliable than for standing poses.
 - **Sensitive to camera angle.** Target and user photos should be taken from roughly the same
   viewpoint (e.g. both straight-on, full body, similar height). A side-on photo compared to a
   front-on target will score badly even with a perfect pose.
