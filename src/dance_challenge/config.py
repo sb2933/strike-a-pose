@@ -151,3 +151,15 @@ DIRECTION_MIN_Y_DIFF: float = 0.15     # torso lengths
 DIRECTION_MIN_ANGLE_DIFF: float = 10.0  # degrees
 TURN_RATIO_TOLERANCE: float = 0.2       # shoulder-width change that counts as "turned"
 MAX_HINTS: int = 2                      # at most this many hints per body part
+
+# --- Live mode (Phase 2) ---------------------------------------------------
+
+LIVE_OUTPUTS_DIR: Path = OUTPUTS_DIR / "live"   # "Matched!" snapshots go here
+
+CAMERA_WIDTH: int = 1280      # requested webcam resolution (the camera may pick another)
+CAMERA_HEIGHT: int = 720
+CAMERA_FPS: int = 30          # requested webcam frame rate
+CAMERA_FOURCC: str = "MJPG"   # compressed frames: lets USB webcams reach 30 FPS at 720p
+LIVE_MAX_FPS: float = 30.0    # cap the loop so a fast machine doesn't burn CPU
+WINDOW_NAME: str = "Strike a Pose (live)"
+HUD_FONT_SCALE: float = 1.0   # make all on-screen text bigger/smaller
