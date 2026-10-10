@@ -11,7 +11,7 @@ The project is planned in 6 phases:
 | Phase | What | Status |
 |---|---|---|
 | 1 | Static pose matching from photos | **Done** (this README) |
-| 2 | Live webcam detection | placeholder `src/dance_challenge/live/` |
+| 2 | Live webcam detection | **In progress** — steps 2.1–2.3 done (camera input, live skeleton, smoothing) |
 | 3 | Movement sequences | placeholder `src/dance_challenge/movement/` |
 | 4 | Advanced scoring | — |
 | 5 | Game system | placeholder `src/dance_challenge/game/` |
@@ -29,16 +29,58 @@ py -3.11 -m venv .venv
 python -m pip install -r requirements.txt
 python -m pip install -e .          # makes `dance_challenge` importable
 python scripts/download_model.py    # fetches models/pose_landmarker_full.task (~9 MB)
-pytest                              # should print: 43 passed
+python scripts/download_model.py --model lite   # optional: faster model for live mode (~6 MB)
+pytest                              # should print: 83 passed
 ```
 
 All commands below assume the virtual environment is active and you are in the
 `cv-dance-challenge` folder.
 
+### Using an iPhone as the camera (live mode)
+
+Live mode works with any camera Windows can see. An iPhone gives a much better
+picture than most laptop webcams. All the processing still happens on the
+laptop in Python; the phone only sends video.
+
+1. **Install a phone-as-webcam app** on both the iPhone (App Store) and Windows
+   (its desktop/driver app): for example **Camo**, **iVCam** or **DroidCam**.
+2. **Connect over USB** (more reliable and lower lag than Wi-Fi). Plug the phone in,
+   unlock it, tap *Trust this computer* if asked, and open the app on both sides.
+   The Windows app should show the phone's picture.
+3. **Use the back camera** (better quality) and set the app to 720p or 1080p.
+4. **Find the camera number:** close the phone app's preview window if it holds the
+   camera, then run
+   ```powershell
+   python scripts/list_cameras.py
+   ```
+   The phone usually appears as an extra camera after the built-in webcam (e.g. `1`
+   or `2`), often at 1280x720 or 1920x1080. If the laptop has no other camera
+   (or it's disabled), the phone is camera `0`. For each number the script tries
+   every backend/format and says which gives a **PICTURE**.
+   Keep the phone app's Windows program running: it feeds the virtual camera.
+5. **Run live mode** with that number:
+   ```powershell
+   python scripts/live.py --source 1 --debug
+   ```
+   - Picture sideways (phone held upright)? Add `--rotate 90` (or `270`).
+   - Black screen while the phone app shows a picture? Live mode already retries
+     other backends/formats when it sees only black frames; you can force one with
+     `--backend msmf` or `--backend dshow` (use what `list_cameras.py` marked PICTURE).
+   - Wi-Fi apps that give a URL instead of a camera (e.g. DroidCam's
+     `http://<phone-ip>:4747/video`) also work: `--source http://...`.
+
+**Mirroring.** The live display is mirrored by default so it behaves like a mirror:
+raise your right hand and it goes up on the right of the screen. The iPhone **back
+camera is not mirrored**, so the default looks right with it. If your app mirrors
+the picture itself (some do for the front/selfie camera), turn mirroring **off in
+the phone app**, not with `--no-mirror`: pose detection needs the real,
+un-mirrored picture to tell your left from your right.
+
 ## How to run each script
 
 ### `scripts/download_model.py`
 Downloads the MediaPipe PoseLandmarker model into `models/` if it isn't there yet.
+`--model lite` downloads the smaller, faster model used by `live.py --model lite`.
 
 ### `scripts/detect_pose.py` — steps 1.1 and 1.2
 ```powershell
@@ -80,6 +122,35 @@ python scripts/calibrate.py --target mypose --folder some/other/folder
 ```
 Prints one row per photo: overall, upper, lower, angle score, position score.
 Run it before and after changing a threshold in `config.py` to see the effect.
+
+### `scripts/list_cameras.py` — find your camera / iPhone
+```powershell
+python scripts/list_cameras.py               # tries cameras 0-5
+python scripts/list_cameras.py --max-index 9
+```
+Opens each camera number briefly and prints which ones work and at what resolution.
+
+### `scripts/live.py` — live mode (Phase 2, in progress)
+```powershell
+python scripts/live.py --source 1                    # camera 1 (e.g. iPhone app)
+python scripts/live.py --source http://IP:4747/video # a stream URL
+python scripts/live.py --source clip.mp4             # a video file
+```
+| Flag | What it does |
+|---|---|
+| `--source` | Camera number, `http://`/`https://`/`rtsp://` stream URL, or video file (default `0`) |
+| `--backend {auto,dshow,msmf}` | Camera backend. `auto` tries DirectShow (with MJPG, then the camera's native format), then Media Foundation, until frames aren't black |
+| `--camera-size WxH` | Resolution to ask a camera for (default 1280x720); the startup line shows what it actually delivers |
+| `--rotate {0,90,180,270}` | Rotate frames clockwise before anything else (phone upright, picture sideways) |
+| `--no-mirror` | Show the picture un-mirrored |
+| `--debug` | Start with the debug overlay: joint labels (L/R), source, camera vs detection resolution, mirroring, model, people found, timings, camera delivery FPS |
+| `--model {full,lite}` | Pose model: `full` (default, more accurate) or `lite` (faster; download it first) |
+| `--detect-size PX` | Longest side of the frame copy used for detection (default 640) |
+| `--verbose` | Show MediaPipe/OpenCV log lines |
+
+Keys: **Q** or **Esc** quit, **D** toggles the debug overlay. If the camera drops
+(cable unplugged, app closed), the window shows "Camera disconnected" and retries
+every 3 seconds.
 
 ### Common flags
 - `--verbose` (all scripts): show MediaPipe/TensorFlow's own INFO/warning
@@ -237,6 +308,82 @@ downward). Synthetic targets also have `"synthetic": true`.
   only while MediaPipe runs. `--verbose` turns this off. Python errors still show.
 - **Personal photos are gitignored** (`data/raw/*`, `data/user/*`) so they are never pushed.
 
+### Phase 2 (live mode)
+
+- **iPhone as a webcam, not a native iPhone app.** A phone-as-webcam app (Camo, iVCam,
+  DroidCam) makes the iPhone look like an ordinary camera to Windows, so the same
+  Python + OpenCV + MediaPipe code works with the iPhone, a laptop webcam, a USB
+  webcam or a video file. A native iOS app would mean rewriting everything in Swift
+  (or running models on the phone), needing a Mac and Xcode, and keeping two code
+  bases in sync — far more work for no gain at this stage. The phone gives a sharper,
+  faster picture; the laptop does all the computing.
+- **USB preferred over Wi-Fi**: lower and steadier lag, and no dropped frames when the
+  Wi-Fi is busy. Stream URLs are still supported for apps that only do Wi-Fi.
+- **Rotation happens first.** `--rotate` turns the frame as soon as it's read, so
+  detection, drawing and the debug overlay all see an upright picture.
+- **Detection runs on a smaller copy** (longest side `DETECTION_MAX_SIDE = 640`, same
+  aspect ratio, never upscaled); the display keeps full camera quality. MediaPipe
+  returns landmarks as fractions (0–1) of the image, so the same fractions map straight
+  back onto the full-size frame — no extra conversion that could go wrong.
+- **Capture size 1280x720 requested, MJPG format.** Big enough to look sharp, small
+  enough for USB to carry at 30 FPS. Cameras may deliver something else; the startup
+  line prints what you actually got (`asked for ...`).
+- **Camera backends on Windows: DirectShow, then Media Foundation, checked for black
+  frames.** DirectShow usually opens faster. But asking a camera for MJPG when it doesn't
+  support it, or using the wrong backend for a virtual camera (Camo on Windows 11 is a
+  Media Foundation virtual camera), can give a camera that "opens" yet sends only black
+  frames. So when opening, live mode reads up to `CAMERA_WARMUP_FRAMES = 30` frames and,
+  if they're all black (brightest pixel <= `BLANK_FRAME_MAX_VALUE = 8`; a real dark room
+  still has sensor noise above that), moves on to: DirectShow + MJPG, DirectShow + native
+  format, Media Foundation + native format. If all are black it opens anyway (maybe the
+  lens is covered) and prints a warning. `--backend` forces one.
+- **Reconnecting instead of crashing.** If the camera/stream stops sending frames, the
+  window shows "Camera disconnected" and retries every `RECONNECT_SECONDS = 3`. Each
+  attempt runs in a background thread because opening a missing stream can block for
+  several seconds (`STREAM_TIMEOUT_MS = 5000`), and the window must keep responding to Q.
+  Timestamps keep increasing across reconnects (MediaPipe's video mode requires that).
+- **Live detection: VIDEO mode, un-mirrored frame.** PoseLandmarker runs in VIDEO mode
+  (`detect_for_video` with increasing millisecond timestamps), which tracks the person
+  between frames — simpler than LIVE_STREAM's callbacks. It always sees the original,
+  un-mirrored frame, so its anatomical left/right stay correct; only the displayed copy
+  is flipped, and skeleton x coordinates are mirrored to match (x → 1 − x).
+- **Live poses use the Phase 1 format.** Each frame's main person goes through Phase 1's
+  `choose_main_person` (largest body, up to `LIVE_MAX_PEOPLE = 2` searched) and
+  `landmarks_to_pose`, labelled with the *full* frame size so Phase 1's pixel-scaled maths
+  works unchanged.
+- **Speed (measured on the development laptop, 1280x720 test video, processing only):**
+
+  | model | detect size 640 | 480 | 320 |
+  |---|---|---|---|
+  | full | 28 ms → 36 FPS | 29 ms → 35 FPS | 28 ms → 36 FPS |
+  | lite | 24 ms → 42 FPS | 25 ms → 41 FPS | 24 ms → 42 FPS |
+
+  Detection size barely matters because MediaPipe shrinks every frame to its own small
+  input size internally; the model choice saves ~4 ms. Both are faster than a 30 FPS
+  camera, so the defaults are `full` at 640 and the camera sets the real frame rate.
+  `--model lite` is there for slower machines.
+- **Camera read in a background thread, newest frame only.** A plain loop waits for the
+  camera, *then* detects, so the two times add up. `LatestFrameGrabber` keeps reading in
+  a thread and the loop always takes the newest frame (older ones are dropped, not
+  queued, so the picture never lags behind). On a local 30 FPS test stream this raised
+  processing from 26 to 29 FPS (the stream's own limit). The grabber also measures the
+  camera's own delivery rate, shown in the debug panel ("camera delivers N FPS"), to tell
+  a slow camera apart from slow processing. Video files are still read one frame at a
+  time, in order, so no frames are skipped.
+- **Smoothing: per-joint exponential moving average** (`SMOOTHING_ALPHA = 0.5`, the weight
+  of the newest frame). Simple, no extra packages, and easy to reason about. Only
+  confident joints (visibility >= `MIN_VISIBILITY`) enter the average; a joint that drops
+  below that is cleared and restarts at its new position when it's seen again, so it
+  never "slides" across the screen. No person → all history cleared and "Step into frame"
+  shown. On the test video, smoothing halved frame-to-frame jitter (e.g. left wrist
+  1.2 px → 0.5 px per frame) while standing still. Visibility is passed through
+  unsmoothed so Phase 1's skip rules see what the detector reported. Trade-off: a lower
+  alpha is calmer but lags behind fast movements; 0.5 lags ~1–2 frames at 30 FPS.
+- **Hidden joints aren't drawn.** Joints below `MIN_VISIBILITY` (and bones touching them)
+  are skipped so a hidden arm doesn't flail around on screen.
+- **On-screen text scales with the frame's shorter side**, so it's the same size in
+  landscape and portrait (upright phone) and long lines are trimmed to fit.
+
 ## Known limitations
 
 - **2D only.** MediaPipe's depth (z) is ignored, so an arm pointing at the camera looks
@@ -253,6 +400,9 @@ downward). Synthetic targets also have `"synthetic": true`.
   someone with longer arms relative to their torso loses a few position points on the wrists
   even with matching angles.
 - **Mirroring.** Selfie/front-camera apps often mirror the image, which swaps left and right.
-  Use `--mirror` (or `MIRROR_INPUT = True`) consistently, or not at all.
+  Use `--mirror` (or `MIRROR_INPUT = True`) consistently, or not at all. In live mode, if the
+  phone app mirrors the picture, turn that off in the app (see "Using an iPhone").
+- **Camera names aren't shown.** OpenCV can only list cameras by number, so
+  `list_cameras.py` shows numbers and resolutions, not "iPhone" or "Integrated Webcam".
 - **Small or partial people.** If the person is tiny in the frame, cropped, or in silhouette,
   detection may fail or visibility may be too low to score.

@@ -1,17 +1,20 @@
-"""Download the MediaPipe PoseLandmarker model into models/ if it is missing.
+"""Download a MediaPipe PoseLandmarker model into models/ if it is missing.
 
 Usage:
-    python scripts/download_model.py
+    python scripts/download_model.py               # the "full" model (photos + live)
+    python scripts/download_model.py --model lite  # the faster "lite" model (live --model lite)
 """
 
+import argparse
 import urllib.request
 from pathlib import Path
 
-from dance_challenge.config import MODEL_PATH, MODEL_URL
+from dance_challenge.config import MODEL_VARIANTS, model_path, model_url
 
 
-def download_model(url: str = MODEL_URL, dest: Path = MODEL_PATH) -> Path:
-    """Download the model file to ``dest`` unless it already exists."""
+def download_model(variant: str = "full") -> Path:
+    """Download a model variant unless it already exists. Returns its path."""
+    url, dest = model_url(variant), model_path(variant)
     if dest.exists():
         print(f"Model already present: {dest}")
         return dest
@@ -25,4 +28,6 @@ def download_model(url: str = MODEL_URL, dest: Path = MODEL_PATH) -> Path:
 
 
 if __name__ == "__main__":
-    download_model()
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--model", choices=MODEL_VARIANTS, default="full")
+    download_model(parser.parse_args().model)

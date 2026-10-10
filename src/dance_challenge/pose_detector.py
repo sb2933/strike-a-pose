@@ -57,21 +57,30 @@ def load_image(path: str | Path, mirror: bool = MIRROR_INPUT) -> np.ndarray:
 
 
 def create_landmarker(
-    model_path: str | Path = MODEL_PATH, max_people: int = MAX_PEOPLE
+    model_path: str | Path = MODEL_PATH,
+    max_people: int = MAX_PEOPLE,
+    video: bool = False,
 ) -> vision.PoseLandmarker:
-    """Create a PoseLandmarker for still images that finds up to ``max_people``.
+    """Create a PoseLandmarker that finds up to ``max_people``.
+
+    Args:
+        video: False for still images (``detect``); True for a stream of frames
+            (``detect_for_video`` with increasing timestamps), which tracks the
+            person from frame to frame instead of searching from scratch.
 
     Raises:
         FileNotFoundError: If the model file has not been downloaded yet.
     """
     model_path = Path(model_path)
     if not model_path.is_file():
+        variant = "lite" if "lite" in model_path.name else "full"
         raise FileNotFoundError(
             f"Model not found at {model_path}. Run: python scripts/download_model.py"
+            + (" --model lite" if variant == "lite" else "")
         )
     options = vision.PoseLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=str(model_path)),
-        running_mode=vision.RunningMode.IMAGE,
+        running_mode=vision.RunningMode.VIDEO if video else vision.RunningMode.IMAGE,
         num_poses=max_people,
     )
     with quiet_native_logs():

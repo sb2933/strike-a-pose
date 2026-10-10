@@ -18,11 +18,26 @@ OUTPUTS_DIR: Path = PROJECT_ROOT / "outputs"
 
 # --- Model -----------------------------------------------------------------
 
-MODEL_URL: str = (
-    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-    "pose_landmarker_full/float16/latest/pose_landmarker_full.task"
-)
-MODEL_PATH: Path = MODELS_DIR / "pose_landmarker_full.task"
+# MediaPipe offers the pose model in sizes. "full" is used for photos; live
+# mode can use "lite" (faster, a little less accurate) — see --model.
+MODEL_VARIANTS: tuple[str, ...] = ("full", "lite")
+
+
+def model_url(variant: str = "full") -> str:
+    """Download URL of a PoseLandmarker model variant ("full" or "lite")."""
+    return (
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+        f"pose_landmarker_{variant}/float16/latest/pose_landmarker_{variant}.task"
+    )
+
+
+def model_path(variant: str = "full") -> Path:
+    """Where a model variant is stored on disk."""
+    return MODELS_DIR / f"pose_landmarker_{variant}.task"
+
+
+MODEL_URL: str = model_url("full")
+MODEL_PATH: Path = model_path("full")
 
 # --- Input handling --------------------------------------------------------
 
@@ -160,6 +175,33 @@ CAMERA_WIDTH: int = 1280      # requested webcam resolution (the camera may pick
 CAMERA_HEIGHT: int = 720
 CAMERA_FPS: int = 30          # requested webcam frame rate
 CAMERA_FOURCC: str = "MJPG"   # compressed frames: lets USB webcams reach 30 FPS at 720p
+CAMERA_BACKEND: str = "auto"  # "auto", "dshow" or "msmf" (Windows); see --backend
+CAMERA_WARMUP_FRAMES: int = 30   # frames to wait for a non-black picture when opening
+BLANK_FRAME_MAX_VALUE: int = 8   # a frame whose brightest pixel is <= this counts as black
+STREAM_TIMEOUT_MS: int = 5000 # give up connecting to / reading a stream URL after this
+RECONNECT_SECONDS: float = 3.0  # when the camera/stream drops, retry this often
+
+# Pose detection runs on a copy of the frame shrunk so its longest side is this
+# many pixels (much faster); the display keeps the full camera resolution.
+DETECTION_MAX_SIDE: int = 640
+
+# Show the picture flipped left-right, like a mirror (turn off with --no-mirror).
+# Detection always runs on the un-flipped frame so left/right labels stay correct.
+MIRROR_DISPLAY: bool = True
+
+# Joint smoothing (exponential moving average): weight of the newest frame.
+# 1.0 = no smoothing (jittery), lower = calmer but lags behind fast moves.
+SMOOTHING_ALPHA: float = 0.5
+
+LIVE_MODEL: str = "full"      # "full" or "lite" (faster); see --model
+# How many people the live detector looks for; the largest is used (as in Phase 1).
+# More than 1 guards against someone in the background being tracked instead of you.
+LIVE_MAX_PEOPLE: int = 2
+
 LIVE_MAX_FPS: float = 30.0    # cap the loop so a fast machine doesn't burn CPU
 WINDOW_NAME: str = "Strike a Pose (live)"
 HUD_FONT_SCALE: float = 1.0   # make all on-screen text bigger/smaller
+
+# Colours are BGR (OpenCV's order), not RGB.
+SKELETON_BONE_COLOR: tuple[int, int, int] = (255, 255, 255)   # white
+SKELETON_JOINT_COLOR: tuple[int, int, int] = (255, 180, 60)   # light blue (until scored)
